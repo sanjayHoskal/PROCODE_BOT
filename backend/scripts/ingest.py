@@ -1,0 +1,10 @@
+import os
+import asyncio
+from dotenv import load_dotenv
+from llama_parse import LlamaParse
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import DirectoryLoader
+from langchain_community.vectorstores import qdrant
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
