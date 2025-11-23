@@ -1,0 +1,32 @@
+# --- 1. Base Logic & Pydantic (The Foundation) ---
+# Force Pydantic V2 to prevent downgrades by other packages
+pydantic>=2.7.0
+python-dotenv
+requests
+httpx
+
+# --- 2. API & Server ---
+fastapi
+uvicorn
+python-multipart
+
+# --- 3. LangChain Ecosystem (The Brains) ---
+# Installing these in a block ensures they share the same 'langchain-core' version
+langchain
+langchain-core
+langchain-community
+langchain-groq
+langgraph
+
+# --- 4. LlamaIndex & Parsing (The Eyes) ---
+llama-index-core
+llama-parse
+llama-index-readers-file
+
+# --- 5. Vector Database & Embeddings (The Memory) ---
+qdrant-client
+fastembed
+
+# --- 6. Tools (PDF & Email) ---
+weasyprint
+sib-api-v3-sdk
