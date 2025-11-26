@@ -1,42 +1,53 @@
 import os
-from langchain_community.vectorstores import Qdrant
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from qdrant_client import QdrantClient
 
-# Load env vars (We assume they are loaded in the main app, but good to be safe)
+# Load env vars
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = "procode_knowledge"
 
-def retrieve_similar_projects(query: str):
+def retrieve_similar_projects(query:str):
     """
     Searches the knowledge base for relevant past projects or policies.
-    Useful when the user asks about pricing, similar work, or company rules.
     """
-    print(f"RAG Tool called: Searching for '{query}'...")
+    print(f"RAG Tool Called: Searching for '{query}'...")
     try:
-        client=QdrantClient(url=QDRANT_URL,api_key=QDRANT_API_KEY)
-        embeddings=FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-        vector_store=Qdrant(client=client,collection_name=COLLECTION_NAME,
-                            embeddings=embeddings)
-        docs=vector_store.similarity_search(query,k=3)
+        #1. Connect to qdrant
+        client=QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
-        if not docs:
-            return "No relavent information found in the knowledge base"
+        #2. Initialise embeddings model
+        embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+
+        #3. Create Query vector
+        query_vector = embeddings.embed_query(query)
+
+        #4. Perform Search (Using new query_points API)
+        search_result = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            limit=3,
+        ).points
+
+        if not search_result:
+            return f"No results found for {query}"
         
-        result_text = "\n\n".join([f"--- Snippet from {d.metadata.get('source', 'Unknown')} ---\n{d.page_content}" for d in docs])
-        return result_text
-    
+        # 5. Format the Output
+        results = []
+        for hit in search_result:
+            #Safely get content from payload
+            content = hit.payload.get("page_content","No content available")
+            source=hit.payload.get("metadata",{}).get("source","Unknown")
+            results.append(f"--- Snippet from {source} ---\n{content}")
+
+        return "\n\n".join(results)
     except Exception as e:
-        raise ValueError(f"Error searching for similar projects: {e}")
+        print(f"RAG Error: {e}")
+        return f"Error retrieving similar projects: {str(e)}"
     
-
-
-# Simple test block to run this file directly
 if __name__ == "__main__":
-    # You can test this by running: python -m backend.app.tools.rag
-    # (Make sure .env is loaded before running directly)
     from dotenv import load_dotenv
-    load_dotenv()
-    print(retrieve_similar_projects("relieving letter"))
-    
+    #Fix path to load .env correctly for testing
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv(os.path.join(os.path.dirname(BASE_DIR), ".env"))
+    print(retrieve_similar_projects('Project pricing'))
