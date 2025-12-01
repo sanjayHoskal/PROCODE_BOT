@@ -3,3 +3,4 @@
 */.env
 backend/.env
 backend/venv
+backend/app/generated_proposals

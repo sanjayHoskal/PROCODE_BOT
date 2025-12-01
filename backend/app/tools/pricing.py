@@ -11,8 +11,8 @@ def calculate_project_price(estimated_hours: int, resource_levl: str="mid") -> i
 # Define hourly rates for different levels
     RATES={
         "junior":100,
-        "mid":400,
-        "senior":600,
+        "mid":250,
+        "senior":500,
         "expert":1000
     }
 

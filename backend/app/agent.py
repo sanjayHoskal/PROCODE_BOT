@@ -33,6 +33,12 @@ llm = ChatGroq(
 # --- SYSTEM PROMPT (STRICTER) ---
 SYSTEM_PROMPT = """You are ProCode Bot, an expert AI consultant.
 
+*** CRITICAL INSTRUCTION ***
+You have the capability to read files. If the user uploads a PDF, the system will extract the text and present it to you inside <ATTACHED_PROJECT_DOCUMENT> tags.
+- YOU MUST READ THIS CONTENT.
+- Do NOT say "I cannot read files".
+- Treat the content inside those tags as the definitive project architecture and requirements.
+
 YOUR PROCESS (FOLLOW STRICTLY):
 1. GATHER INFO: Ask about features, user traffic, and platform (Web/Mobile).
 2. RESEARCH: If asked about past work/pricing policies, use [LOOKUP: query].
@@ -112,7 +118,7 @@ def tool_node(state: AgentState):
 
             price = calculate_project_price(hours, level)
             
-            result_msg = f"PRICING TOOL: Calculated Cost: ${price} (for {hours} hours @ {level} level)."
+            result_msg = f"REQUIREMENT: Calculated Cost: ₹{price:,} (for {hours} hours @ {level} level)."
             return {
                 "messages": [AIMessage(content=result_msg)],
                 "project_price": price,
@@ -124,46 +130,72 @@ def tool_node(state: AgentState):
     return {"next_step": "chatbot"}
 
 # --- NODE 3: DRAFTING ---
+# ... (Imports remain the same) ...
+
+# --- NODE 3: DRAFTING (Updated) ---
 def proposal_node(state: AgentState):
-    # Fallbacks if data is missing
-    price = state.get("project_price", "TBD (Pending Discussion)")
+    # Fallbacks
+    price = state.get("project_price", 0) # Default to integer 0
     reqs = "Client Project"
     if len(state['messages']) > 2:
         reqs = state['messages'][-2].content
 
-    # Extract email safely
-    recipient = "sanjuhoskal@gmail.com" # Fallback
+    # Extract email
+    recipient = "sanjuhoskal@gmail.com" 
     for m in reversed(state['messages']):
         if "@" in m.content and "ProCode" not in m.content:
-            # Simple regex to find email
             email_match = re.search(r'[\w\.-]+@[\w\.-]+', m.content)
             if email_match:
                 recipient = email_match.group(0)
             break
 
+    # --- HTML TEMPLATE WITH LOGO AND FOOTER ---
+    # Note: price:, formats number with commas (e.g. 40,000)
     prompt = f"""
     Write a clean HTML proposal.
     - Requirements Summary: {reqs}
-    - Total Price: ${price}
+    - Total Price: INR {price:,}
     - Notes: {state.get('rag_context', 'Standard terms apply.')}
     
-    Structure: 
-    <h1>ProCode Proposal</h1>
+    REQUIRED HTML STRUCTURE (Do strictly):
+    
+    <div class="header-container">
+        <div class="company-name">ProCode Bot</div>
+        <img src="file:///D:/ML%20Projects/Procode_Prod_Projects/procode_bot/backend/knowledge_base/procode_image.png" class="logo" alt="Company Logo">
+    </div>
+
+    <h1>Project Proposal</h1>
     <p>Dear Customer,</p>
-    ... details ...
-    <div style='background:#eee; padding:10px;'><b>Total Estimate: ${price}</b></div>
+    
+    [...Insert specific project details, timeline, and scope here based on requirements...]
+
+    <h2>Commercials</h2>
+    <div class="price-box">
+        Total Estimated Cost: ₹{price:,}
+    </div>
+
+    <div class="footer">
+        <b>ProCodeHub Pvt Ltd</b><br>
+        123 Kalikaparameshwari complex,Durgigudi,Shivamogga, Karnataka - 577201<br>
+        Contact: +91 98765 43210 | Email:procodehub@gmail.com
+    </div>
     """
     
+    # Run LLM
     html_response = llm.invoke([HumanMessage(content=prompt)])
     html_content = html_response.content
     
+    # Strip Markdown if present
     if "```html" in html_content:
         html_content = html_content.split("```html")[1].split("```")[0]
 
+    # Generate PDF
     pdf_path = create_pdf(html_content)
+    
+    # Send Email
     email_status = send_proposal_email(pdf_path, recipient)
     
-    final_msg = f"Proposal generated for ${price} and sent to {recipient}!"
+    final_msg = f"Proposal generated for ₹{price:,} and sent to {recipient}!"
     
     return {
         "messages": [AIMessage(content=final_msg)],

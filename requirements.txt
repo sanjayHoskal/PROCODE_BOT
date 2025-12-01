@@ -9,6 +9,7 @@ httpx
 fastapi
 uvicorn
 python-multipart
+streamlit
 
 # --- 3. LangChain Ecosystem (The Brains) ---
 # Installing these in a block ensures they share the same 'langchain-core' version
@@ -30,3 +31,6 @@ fastembed
 # --- 6. Tools (PDF & Email) ---
 weasyprint
 sib-api-v3-sdk
+
+# --- 7. PDF extractor
+pypdf

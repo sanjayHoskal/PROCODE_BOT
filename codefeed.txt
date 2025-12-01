@@ -1,101 +1,3 @@
-Phase 1: Foundation & Knowledge Base (RAG)
- 
-
-Before the agent can "think," it needs access to your business rules and data. We will set up the environment and the vector database.
-
-Step 1.1: Environment Setup: Create the virtual environment and populate the .env file with API keys (Groq, Qdrant, Brevo, LlamaCloud).
-
-Step 1.2: The RAG Ingestion Script: Create a standalone script (outside the API) to ingest your "Past Projects" or "Pricing Policy" PDFs.
-
-Use LlamaParse to clean the data.
-
-Embed it and upload it to Qdrant.
-
-Step 1.3: The Retrieval Tool (rag.py): Write the Python function that the Agent will call to query Qdrant (e.g., retrieve_similar_projects(query)).
-
- 
-
-Phase 2: Deterministic Tools (The "Hands")
- 
-
-We need to build the strict logic tools. These are standard Python functions that the LLM will "call" but not "perform."
-
-Step 2.1: Pricing Engine (pricing.py): Implement the math logic.
-
-Input: hours, resource_level.
-
-Output: Final price (Integer).
-
-Step 2.2: PDF Generator (pdf_gen.py): Implement WeasyPrint.
-
-Input: HTML string.
-
-Output: A PDF file saved locally (for now).
-
-Step 2.3: Email Service (emailer.py): Implement Brevo.
-
-Input: PDF filepath, Recipient Email.
-
-Action: Sends the email via SMTP/API.
-
- 
-
-Phase 3: The Agent Brain (LangGraph)
- 
-
-This is the most critical phase where we wire the LLM (Groq) to the tools using LangGraph.
-
-Step 3.1: Define State: Define the AgentState class (what data passes between nodes: user messages, calculated price, file paths).
-
-Step 3.2: Define Nodes: Create the functions for the graph:
-
-Node 1 (Reasoning): LLM decides what to do.
-
-Node 2 (Action): Execute tools (Pricing, RAG).
-
-Node 3 (Drafting): LLM writes the HTML proposal.
-
-Step 3.3: Define Edges: Connect the nodes (e.g., If tool called $\rightarrow$ go to Action Node $\rightarrow$ return to Reasoning).
-
-Step 3.4: Test the Brain: Run agent.py via terminal to simulate a conversation without the UI.
-
- 
-
-Phase 4: The API Layer (FastAPI)
- 
-
-Now we wrap the working agent in a web server so the frontend can talk to it.
-
-Step 4.1: Server Setup (server.py): Initialize FastAPI.
-
-Step 4.2: Connect Endpoint: Create a POST endpoint /generate_proposal that takes user input and runs the LangGraph workflow.
-
-Step 4.3: Handling Files: Ensure the API can return the generated PDF file or the status text.
-
- 
-
-Phase 5: The Frontend (Streamlit)
- 
-
-Finally, we build the user interface.
-
-Step 5.1: UI Layout: Create the text input and file uploader for the screenshot.
-
-Step 5.2: API Integration: Use Python's requests library in Streamlit to send the user input to your FastAPI backend.
-
-Step 5.3: Display Results: Show the "Proposal Summary" and the "Download PDF" button.
-
- 
-
-Phase 6: Deployment (Docker & HF Spaces)
- 
-
-Step 6.1: Dockerize: Write the Dockerfile to bundle the Python app and WeasyPrint dependencies (Linux libraries).
-
-Step 6.2: Push to Hub: Deploy the backend to Hugging Face Spaces and the frontend to Streamlit Cloud.
-
-
-
 folder structure:
 
 Your-Project-Root/
@@ -262,7 +164,38 @@ if __name__ == "__main__":
         asyncio.run(ingest_data())
 
 
-#agent.py
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#backend/app/agent.py
 
 import os
 import sys
@@ -378,7 +311,7 @@ def tool_node(state: AgentState):
 
             price = calculate_project_price(hours, level)
             
-            result_msg = f"PRICING TOOL: Calculated Cost: ${price} (for {hours} hours @ {level} level)."
+            result_msg = f"PRICING TOOL: Calculated Cost: ₹{price:,} (for {hours} hours @ {level} level)."
             return {
                 "messages": [AIMessage(content=result_msg)],
                 "project_price": price,
@@ -390,46 +323,72 @@ def tool_node(state: AgentState):
     return {"next_step": "chatbot"}
 
 # --- NODE 3: DRAFTING ---
+# ... (Imports remain the same) ...
+
+# --- NODE 3: DRAFTING (Updated) ---
 def proposal_node(state: AgentState):
-    # Fallbacks if data is missing
-    price = state.get("project_price", "TBD (Pending Discussion)")
+    # Fallbacks
+    price = state.get("project_price", 0) # Default to integer 0
     reqs = "Client Project"
     if len(state['messages']) > 2:
         reqs = state['messages'][-2].content
 
-    # Extract email safely
-    recipient = "sanjuhoskal@gmail.com" # Fallback
+    # Extract email
+    recipient = "sanjuhoskal@gmail.com" 
     for m in reversed(state['messages']):
         if "@" in m.content and "ProCode" not in m.content:
-            # Simple regex to find email
             email_match = re.search(r'[\w\.-]+@[\w\.-]+', m.content)
             if email_match:
                 recipient = email_match.group(0)
             break
 
+    # --- HTML TEMPLATE WITH LOGO AND FOOTER ---
+    # Note: price:, formats number with commas (e.g. 40,000)
     prompt = f"""
     Write a clean HTML proposal.
     - Requirements Summary: {reqs}
-    - Total Price: ${price}
+    - Total Price: INR {price:,}
     - Notes: {state.get('rag_context', 'Standard terms apply.')}
     
-    Structure: 
-    <h1>ProCode Proposal</h1>
+    REQUIRED HTML STRUCTURE (Do strictly):
+    
+    <div class="header-container">
+        <div class="company-name">ProCode Bot</div>
+        <img src="file:///D:/ML_Projects/Procode_Prod_Projects/procode_bot/backend/knowledge_base/procode_image.png" class="logo" alt="Company Logo">
+    </div>
+
+    <h1>Project Proposal</h1>
     <p>Dear Customer,</p>
-    ... details ...
-    <div style='background:#eee; padding:10px;'><b>Total Estimate: ${price}</b></div>
+    
+    [...Insert specific project details, timeline, and scope here based on requirements...]
+
+    <h2>Commercials</h2>
+    <div class="price-box">
+        Total Estimated Cost: ₹{price:,}
+    </div>
+
+    <div class="footer">
+        <b>ProCode Technologies Pvt Ltd</b><br>
+        123 Innovation Drive, Tech City, Karnataka - 577201<br>
+        Contact: +91 98765 43210 | Email: contact@procode.com
+    </div>
     """
     
+    # Run LLM
     html_response = llm.invoke([HumanMessage(content=prompt)])
     html_content = html_response.content
     
+    # Strip Markdown if present
     if "```html" in html_content:
         html_content = html_content.split("```html")[1].split("```")[0]
 
+    # Generate PDF
     pdf_path = create_pdf(html_content)
+    
+    # Send Email
     email_status = send_proposal_email(pdf_path, recipient)
     
-    final_msg = f"Proposal generated for ${price} and sent to {recipient}!"
+    final_msg = f"Proposal generated for ₹{price:,} and sent to {recipient}!"
     
     return {
         "messages": [AIMessage(content=final_msg)],
@@ -466,6 +425,18 @@ if __name__ == "__main__":
             print(f"Bot: {result['messages'][-1].content}\n")
         except Exception as e:
             print(f"Error: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #rag.py
@@ -525,6 +496,19 @@ if __name__ == "__main__":
     print(retrieve_similar_projects('Project pricing'))
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 #emailer.py
 
 import os
@@ -533,89 +517,126 @@ from dotenv import load_dotenv
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 
-#load env vars
+# Load env vars
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ENV_PATH=os.path.join(os.path.dirname(BASE_DIR),'.env')
+ENV_PATH = os.path.join(os.path.dirname(BASE_DIR), ".env")
 load_dotenv(ENV_PATH)
 
-#configuration
-BREVO_API_KEY = os.getenv('BREVO_API_KEY')
-SENDER_EMAIL = os.getenv('SENDER_EMAIL')
-SENDER_NAME = os.getenv('SENDER_NAME', "Procode Bot")
+# Configuration
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+SENDER_NAME = os.getenv("SENDER_NAME", "Procode Bot")
 
-def send_proposal_email(pdf_path:str, recipient_email:str):
+
+def send_proposal_email(pdf_path: str, recipient_email):
     """
-    sends the proposal PDF to the user via Brevo (Sendinblue).
+    Sends the proposal PDF to one or multiple users via Brevo (Sendinblue).
+
     Args:
-        pdf_path(str): The local path to the generated pdf.
-        recipient_email(str): The email address of the user.
-        
+        pdf_path (str): Path to the generated PDF.
+        recipient_email (str or list): Single email string or a list of emails.
+
     Returns:
-        dict: The API response or error status.
+        dict: API response or error status.
     """
 
-    if not BREVO_API_KEY:
-        raise {"status":"error","message":"Missing API keys or sender email in .env"}
-    print(f"Preparing to send email to {recipient_email}....")
+    # Validate API key
+    if not BREVO_API_KEY or not SENDER_EMAIL:
+        return {"status": "error", "message": "Missing API keys or sender email in .env"}
 
-    #configuration API client
+    # Normalize email input (single or multiple)
+    if isinstance(recipient_email, str):
+        recipient_list = [recipient_email]
+    elif isinstance(recipient_email, list):
+        recipient_list = recipient_email
+    else:
+        return {"status": "error", "message": "recipient_email must be a string or a list"}
+
+    print(f"Preparing to send email to: {recipient_list}")
+
+    # Configure API client
     configuration = sib_api_v3_sdk.Configuration()
-    configuration.api_key['api-key'] = BREVO_API_KEY
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+    configuration.api_key["api-key"] = BREVO_API_KEY
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(configuration)
+    )
 
-    #Prepare the attachment
+    # Prepare attachment
     try:
-        with open(pdf_path,'rb') as f:
+        with open(pdf_path, "rb") as f:
             pdf_content = f.read()
             encoded_content = base64.b64encode(pdf_content).decode("utf-8")
 
         filename = os.path.basename(pdf_path)
+
     except FileNotFoundError:
-        return {'status':'error','message':f'File "{pdf_path}" not found.'}
-    
-    #construct the email object
+        return {"status": "error", "message": f'File "{pdf_path}" not found.'}
+
+    # Construct email object
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-        to=[{"email":recipient_email}],
-        sender={"name":SENDER_NAME,"email":SENDER_EMAIL},
+        to=[{"email": email} for email in recipient_list],
+        sender={"name": SENDER_NAME, "email": SENDER_EMAIL},
         subject="Your Custom Project Proposal - ProCode Bot",
         html_content="""
             <html>
                 <body>
                     <h2>Hello!</h2>
-                    <p>Please find attached the project proposal we generated based on your requirements.</p>
+                    <p>Please find attached the project proposal generated based on your requirements.</p>
                     <p>Best regards,<br>ProCode Team</p>
                 </body>
             </html>
         """,
-        attachment=[{
-            'content':encoded_content,
-            'name':filename
-        }]
+        attachment=[
+            {
+                "content": encoded_content,
+                "name": filename
+            }
+        ],
     )
 
+    # Send email via Brevo
     try:
         api_response = api_instance.send_transac_email(send_smtp_email)
         print(f"Email sent successfully! Message ID: {api_response.message_id}")
-        return {'status':'success','message_id':api_response.message_id}
+
+        return {"status": "success", "message_id": api_response.message_id}
+
     except ApiException as e:
         print(f"Error sending email: {e}")
-        return {'status':'error','message':str(e)}
-    
+        return {"status": "error", "message": str(e)}
+
 
 # --- Test Block ---
 if __name__ == "__main__":
-    # 1. Create a dummy file to test
+    # Create a dummy file for testing
     test_pdf = os.path.join(BASE_DIR, "generated_proposals", "test_email.pdf")
     if not os.path.exists(test_pdf):
         os.makedirs(os.path.dirname(test_pdf), exist_ok=True)
         with open(test_pdf, "w") as f:
             f.write("Dummy PDF Content")
 
-    # 2. Enter YOUR email here to test
-    my_email = "sanjuhoskal@gmail.com" 
-    
-    # FIX 4: Logic corrected. We just call the function directly now.
-    send_proposal_email(test_pdf, my_email)
+    # Test with multiple emails
+    test_emails = ["sanjuhoskal@gmail.com", "sachinsachu9590@gmail.com"]
+
+    send_proposal_email(test_pdf, test_emails)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #pdf_gen.py
@@ -625,78 +646,102 @@ import uuid
 from weasyprint import HTML, CSS
 
 # Path to save the pdf
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "generated_proposals")
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Basic Professional Styling
+# --- UPDATED CSS ---
 DEFAULT_CSS = CSS(string="""
-    @page { size: A4; margin: 2.5cm; }
-    body { font-family: 'Helvetica', 'Arial', sans-serif; font-size: 12pt; line-height: 1.6; color: #333; }
-    h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-top: 0; }
-    h2 { color: #2980b9; margin-top: 20px; }
-    .header { text-align: right; font-size: 10pt; color: #7f8c8d; margin-bottom: 30px; }
-    .footer { position: fixed; bottom: 0; right: 0; font-size: 10pt; color: #bdc3c7; }
-    .price-box { background: #f8f9fa; border-left: 5px solid #27ae60; padding: 15px; margin: 20px 0; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; }
+    @page { 
+        size: A4; 
+        margin: 2cm; 
+        @bottom-center { content: element(footer); } /* Standard print footer */
+    }
+    
+    body { 
+        font-family: 'Helvetica', 'Arial', sans-serif; 
+        font-size: 11pt; 
+        line-height: 1.5; 
+        color: #333;
+    }
+
+    /* Logo Positioning */
+    .header-container {
+        display: block;
+        height: 80px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #2c3e50;
+    }
+    .logo {
+        float: right;
+        height: 60px; /* Adjust size */
+        width: auto;
+    }
+    .company-name {
+        float: left;
+        font-size: 20pt;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-top: 15px;
+    }
+
+    /* Content Styling */
+    h1 { color: #2c3e50; margin-top: 20px; }
+    h2 { color: #2980b9; margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    
+    .price-box { 
+        background: #f8f9fa; 
+        border-left: 5px solid #27ae60; 
+        padding: 15px; 
+        margin: 20px 0; 
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+
+    /* Footer Styling */
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 50px;
+        text-align: center;
+        font-size: 9pt;
+        color: #7f8c8d;
+        border-top: 1px solid #ddd;
+        padding-top: 10px;
+    }
 """)
 
 def create_pdf(html_content:str, filename:str=None) -> str:
-    """
-    Converts an HTML string into a pdf file.
-    Args: 
-        html_content(str): The full HTML string of the proposal.
-        filename(str): Optional filename. If None, a unique ID is generated.
-        
-    Returns:
-        str: The absolute file path of the generated path
-    """
-
-    #1 Generate Filename
-
     if not filename:
         filename = f"proposal_{uuid.uuid4().hex[:8]}.pdf"
-
     if not filename.endswith(".pdf"):
         filename += ".pdf"
 
     file_path = os.path.join(OUTPUT_FOLDER,filename)
     print(f"Generating pdf: {filename}...")
     try:
-        HTML(string=html_content).write_pdf(file_path, stylesheets=[DEFAULT_CSS])
-        print(f"PDF saved at:{file_path}")
+        # base_url is needed if you use local images
+        HTML(string=html_content, base_url=BASE_DIR).write_pdf(file_path, stylesheets=[DEFAULT_CSS])
+        print(f"PDF saved at: {file_path}")
         return file_path
-    
     except Exception as e:
         print(f"Error generating PDF: {str(e)}")
         return None
-    
-#test block
-# --- Test Block ---
-if __name__ == "__main__":
-    # Test HTML content
-    test_html = """
-    <div class="header">ProCode Bot | AI Generated Proposal</div>
-    <h1>Project Proposal: Website Bot</h1>
-    <p>Dear Client,</p>
-    <p>Based on our analysis, here is the suggested implementation for your website bot.</p>
-    
-    <h2>Cost Estimate</h2>
-    <div class="price-box">
-        Total Estimated Cost: $12,500
-    </div>
-    
-    <h2>Timeline</h2>
-    <ul>
-        <li>Phase 1: Discovery (1 Week)</li>
-        <li>Phase 2: Development (4 Weeks)</li>
-    </ul>
-    """
-    
-    create_pdf(test_html, "test_proposal.pdf")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #pricing.py
@@ -714,8 +759,8 @@ def calculate_project_price(estimated_hours: int, resource_levl: str="mid") -> i
 # Define hourly rates for different levels
     RATES={
         "junior":100,
-        "mid":400,
-        "senior":600,
+        "mid":250,
+        "senior":500,
         "expert":1000
     }
 
@@ -742,6 +787,19 @@ if __name__=="__main__":
     level='Senior Developer'
     price=calculate_project_price(hours,level)
     print(f"The total price for a {hours} hour project with a {level} is estimated Rs.{price}, !! Please contact us for exact pricing and attractive discounts !! ")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #state.py
@@ -776,3 +834,280 @@ class AgentState(TypedDict):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# backend/app/server.py
+
+import os
+import base64
+import io
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_groq import ChatGroq
+from pypdf import PdfReader
+
+# Import the workflow from your agent
+# we use relative import since this file is inside the 'app' package
+from app.agent import workflow
+
+# Initialize FastAPI
+app=FastAPI(title="ProCode Bot API", version="1.1")
+
+# add CORS (Allows your streamlit frontend to talk to this backend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Add Memory (So the bot remembers context like "Price is $40k")
+memory = MemorySaver()
+# we compile the graph HERE with checkpointer
+agent_app = workflow.compile(checkpointer=memory)
+
+# Vision and PDF helper
+def process_file(file_data: str, file_type: str) -> str:
+    """
+    Takes base64 file data and returns a text description / content.
+    """
+    try:
+        decoded_file = base64.b64decode(file_data)
+
+        # Handle PDF's (Extract Text)
+        if "pdf" in file_type.lower():
+            pdf_file = io.BytesIO(decoded_file)
+            reader = PdfReader(pdf_file)
+            text = ""
+            for page in reader.pages:
+                text+=page.extract_text() + "\n"
+            return f"\n[ATTACHED PDF CONTENT]:\n{text[:4000]}..."  #Limit to 4k chars to save tokens
+        
+        # Handle images (Using Groq vision)
+        elif any(x in file_type.lower() for x in ["png","jpg","jpeg"]):
+            print(" Analysing Image...")
+            vision_llm = ChatGroq(
+                api_key = os.getenv("GROQ_API_KEY"),
+                model_name = "groq/compound",     #vision model
+                temperature=0.1
+            )
+
+            # Create a vision message
+            msg = HumanMessage(content=[
+                {"type":"text", "text": "Describe this UI/Screenshot in technical details for a developer."},
+                {"type":"image_url","image_url":{"url":f"data:image/jpeg;base64,{file_data}"}}
+                ])
+            response = vision_llm.invoke([msg])
+            return f"\n[IMAGE ANALYSIS]: The user uploaded a screenshot. Description:\n{response.content}"
+        
+        return ""  # If not a supported file type
+    except Exception as e:
+        return f"\n[SYSTEM ERROR]: Could not process file. Error : {e}"
+    
+
+
+# Define request model
+class ChatRequest(BaseModel):
+    message: str
+    thread_id: str = "default_user"   #unique id for each conversation
+    file_data: str = None              #base64 encoded string of file data
+    file_type: str = None             #mime type of the file
+
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    try:
+            # Process file if provided
+        file_context = ""
+        if request.file_data and request.file_type:
+            file_context = process_file(request.file_data, request.file_type)
+ 
+        # Combine user messages + file context
+            full_input = request.message + file_context
+
+        # Define config with thread_id to maintain state
+        config = {"configurable": {"thread_id": request.thread_id}}
+
+        # Prepare the input
+        #input_message = HumanMessage(content=request.message)
+
+        # Run the agent and get response
+        result = agent_app.invoke(
+            {"messages": [HumanMessage(content=full_input)]}, config=config
+        )
+
+        # extract the bot's last response
+        last_message = result["messages"][-1].content
+
+        # Check for PDF in the state
+        pdf_path = result.get("pdf_path", None)
+
+        # Return structured response
+        return {
+            "response": last_message,
+            "pdf_path": pdf_path               # will be None unless a PDF was generated
+        }
+    
+    except Exception as e:
+        print(f"Server Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+# 6. Run server (Optional: for debugging purposes only)
+if __name__ == "__main__":
+    print(" Starting server...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+
+
+
+
+#frontend/app.py
+
+import streamlit as st
+import requests
+import os
+import uuid
+import base64
+
+# CONFIGURATION
+API_URL = "http://127.0.0.1:8000/chat"
+st.set_page_config(page_title="ProCode Bot", page_icon="🤖", layout="wide")
+
+# SESSION STATE INITIALIZATION
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+
+with st.sidebar:
+    st.header(" Projects Controls")
+    st.markdown(" Attachments")
+
+        #5.1 UI Layout: File Uploader
+        # Note: Currently, the backend focuses on text, but this UI element is ready
+        # for when we add image analytics logic later
+
+    uploaded_file = st.file_uploader("Upload Project Screenshot/Docs", type=["png", "jpg", "pdf"])
+    if uploaded_file:
+        st.success(f"File '{uploaded_file.name}' attached (Visual only for now).")
+
+    st.divider()
+
+    if st.button("Clear Chat"):
+        st.session_state.messages = []
+        st.rerun()
+
+
+# --- MAIN CHAT INTERFACE ---
+
+st.title("ProCode Project Consultant")
+st.markdown("Describe your projec idea, and I'll help you estimate and propose a solution")
+
+#Display chat history
+# [NEW CODE]
+# 1. Display Chat History
+# We use 'enumerate' to get a unique index 'i' for every message
+for i, message in enumerate(st.session_state.messages):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        # If a past message had a PDF, show the button again
+        if message.get("pdf_path"):
+             if os.path.exists(message["pdf_path"]):
+                 with open(message["pdf_path"], "rb") as f:
+                    st.download_button(
+                        label="Download Proposal PDF",
+                        data=f,
+                        file_name="ProCode_Proposal.pdf",
+                        mime="application/pdf",
+                        key=f"history_btn_{i}" # <--- FIX: Unique Key based on Index
+                    )
+             else:
+                 st.warning("PDF file no longer exists locally.")
+
+#Handle user input
+if prompt := st.chat_input("Type your requirements here..."):
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    #Api integration
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            try:
+                # NEW: Handle file upload
+                file_upload =  None
+                file_type = None
+
+                # Check if a file sits in sidebar uploader
+                if uploaded_file is not None:
+                    uploaded_file.seek(0)
+                    bytes_data = uploaded_file.getvalue()
+                    file_payload = base64.b64encode(bytes_data).decode('utf-8')
+                    file_type = uploaded_file.type
+
+                payload = {
+                    "message": prompt,
+                    "thread_id": st.session_state.thread_id,
+                    "file_data": file_payload,
+                    "file_type": file_type
+                }
+                #send POST request to API
+                response = requests.post(API_URL, json=payload)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    bot_text = data.get("response", "No response received.")
+                    pdf_path = data.get("pdf_path")  #Extract PDF path if exists
+                    st.markdown(bot_text)
+
+                    #Display results and download button
+                    if pdf_path and os.path.exists(pdf_path):
+                        st.success("Proposal generated successfully!")
+                        with open(pdf_path, 'rb') as f:
+                            st.download_button(
+                                label="Download Proposal PDF",
+                                data=f,
+                                file_name="Procode_Proposal.pdf",
+                                mime='application/pdf',
+                        )
+                        #add to history with the pdf path
+                        st.session_state.messages.append({"role": "assistant", "content": bot_text, "pdf_path": pdf_path})
+                    else:
+                        st.session_state.messages.append({"role": "assistant", "content": bot_text})
+                else:
+                    st.error(f"API Error: {response.status_code}")
+            except requests.exceptions.ConnectionError:
+                st.error("Failed to connect to the server.")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+                
+        
